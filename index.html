@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Personal Stats Tracker</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts - Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            /* Removed padding from body to let the main content fill more space */
+        }
+        /* Custom styles for smoother transitions and animations */
+        .stat-bar-fill {
+            transition: width 0.5s ease-out;
+        }
+        .button-glow:hover {
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+        }
+
+        /* Stat Buttons - Uma Musume Style */
+        .stat-button {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            border-radius: 1.5rem; /* More rounded corners for oval shape */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+            border: 2px solid rgba(255, 255, 255, 0.2); /* Subtle border */
+        }
+        .stat-button:active {
+            transform: scale(0.95);
+        }
+
+        /* Vibrant Stat Button Backgrounds */
+        .stat-button-bg-art { background: linear-gradient(145deg, #FF7B8C, #E74C63); } /* Pink/Red */
+        .stat-button-bg-wit { background: linear-gradient(145deg, #82E0AA, #58D68D); } /* Green */
+        .stat-button-bg-strength { background: linear-gradient(145deg, #7FB3D5, #5DADE2); } /* Blue */
+        .stat-button-bg-look { background: linear-gradient(145deg, #F7DC6F, #F4D03F); } /* Yellow/Gold */
+        .stat-button-bg-guts { background: linear-gradient(145deg, #AF7AC5, #9B59B6); } /* Purple */
+
+        .stat-button-bg-art:hover { background: linear-gradient(145deg, #FF9BB0, #FF7B8C); }
+        .stat-button-bg-wit:hover { background: linear-gradient(145deg, #A9F5B9, #82E0AA); }
+        .stat-button-bg-strength:hover { background: linear-gradient(145deg, #A6D4F5, #7FB3D5); }
+        .stat-button-bg-look:hover { background: linear-gradient(145deg, #FEE99A, #F7DC6F); }
+        .stat-button-bg-guts:hover { background: linear-gradient(145deg, #C59BEF, #AF7AC5); }
+
+        /* Goal/Deadline Bar Styling */
+        .goal-bar {
+            background: linear-gradient(to right, #6a0dad, #9a32c2); /* Purple gradient */
+            border: 2px solid #b794f4; /* Lighter purple border */
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            border-radius: 9999px; /* Fully rounded */
+        }
+
+        /* Rank specific styles for the stat DIV backgrounds */
+        .rank-G-bg { background-color: #374151; } /* gray-800 - Darker start */
+        .rank-F-bg { background-color: #4b5563; } /* gray-700 */
+        .rank-E-bg { background-color: #1e40af; } /* blue-800 - Darker blue */
+        .rank-D-bg { background-color: #059669; } /* emerald-600 - Darker green */
+        .rank-C-bg { background-color: #f59e0b; } /* amber-500 - Orange-yellow */
+        .rank-B-bg { background-color: #ef4444; } /* red-500 - Strong red */
+        .rank-A-bg { background-color: #ec4899; } /* pink-500 - Vibrant pink */
+        .rank-Aplus-bg { background-color: #d946ef; } /* fuchsia-500 - Deeper pink/purple */
+        .rank-S-bg { background-color: #8b5cf6; } /* violet-500 - Rich violet */
+        .rank-Splus-bg { background-color: #6366f1; } /* indigo-500 - Deep indigo */
+        .rank-SSplus-bg {
+            background: linear-gradient(145deg, #fde047, #ef4444, #8b5cf6); /* yellow, red, violet gradient */
+        }
+
+        /* Text colors for ranks to ensure readability on new backgrounds */
+        .rank-G-text { color: #d1d5db; } /* gray-300 */
+        .rank-F-text { color: #d1d5db; } /* gray-300 */
+        .rank-E-text { color: #d1d5db; } /* gray-300 */
+        .rank-D-text { color: #f9fafb; } /* gray-50 */
+        .rank-C-text { color: #1f2937; } /* gray-900 */
+        .rank-B-text { color: #f9fafb; } /* gray-50 */
+        .rank-A-text { color: #f9fafb; } /* gray-50 */
+        .rank-Aplus-text { color: #f9fafb; } /* gray-50 */
+        .rank-S-text { color: #f9fafb; } /* gray-50 */
+        .rank-Splus-text { color: #f9fafb; } /* gray-50 */
+        .rank-SSplus-text {
+            background: linear-gradient(to right, #1f2937, #000000); /* Dark gradient for text on bright SS+ bg */
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-fill-color: transparent;
+            font-weight: 900; /* Ensure text is bold on gradient */
+            text-shadow: none; /* Remove previous text shadow for clarity */
+        }
+
+        /* Glow effect for training */
+        .stat-glow {
+            animation: glow-fade 0.7s ease-out forwards;
+        }
+
+        @keyframes glow-fade {
+            0% { box-shadow: 0 0 0px rgba(255, 255, 255, 0), 0 0 10px rgba(255, 255, 0, 0.8); }
+            50% { box-shadow: 0 0 15px rgba(255, 255, 255, 0.5), 0 0 20px rgba(255, 255, 0, 1); }
+            100% { box-shadow: 0 0 0px rgba(255, 255, 255, 0), 0 0 0px rgba(255, 255, 0, 0); }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-purple-900 to-indigo-900 text-white flex items-center justify-center">
+
+    <div class="max-w-4xl w-full mx-auto bg-gray-800 rounded-2xl shadow-2xl p-4 sm:p-10 border border-purple-700 relative overflow-hidden">
+        <!-- Closest Deadline Display (Goal Bar Inspired) -->
+        <div id="closest-deadline-display" class="goal-bar w-full p-2 mb-6 flex items-center justify-between text-xs sm:text-sm shadow-lg z-10">
+            <div class="flex items-center">
+                <i class="fa-solid fa-flag-checkered text-yellow-300 mr-1 sm:mr-2 text-base sm:text-lg"></i>
+                <span class="font-bold text-yellow-200 mr-1 sm:mr-2">Goal:</span>
+                <span id="closest-deadline-text" class="text-white">No upcoming deadlines.</span>
+            </div>
+            <button id="closest-deadline-details-btn" class="bg-purple-700 hover:bg-purple-800 text-white text-xxs sm:text-xs font-bold py-1 px-2 rounded-full transition duration-200 hidden">Details</button>
+        </div>
+
+        <h1 class="text-3xl sm:text-5xl font-extrabold text-center mb-6 text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-red-600">
+            My Personal Stats
+        </h1>
+
+        <!-- Message Display Area -->
+        <div id="message-display" class="bg-blue-600 text-white p-3 rounded-lg mb-6 text-center shadow-md hidden">
+            <!-- Messages will appear here -->
+        </div>
+
+        <div class="grid grid-cols-1 gap-6 mb-8">
+            <!-- Stats Display - Horizontal Layout -->
+            <div class="bg-gray-700 p-4 rounded-xl shadow-lg border border-gray-600">
+                <h2 class="text-xl sm:text-2xl font-bold mb-4 text-purple-300">Your Current Stats</h2>
+                <div id="stats-container" class="flex justify-between items-start gap-1 sm:gap-2">
+                    <!-- Stats will be dynamically inserted here by JavaScript -->
+                </div>
+                <div id="rank-display" class="text-center mt-4 text-xl sm:text-2xl font-bold text-green-400">
+                    Overall Rank: F
+                </div>
+            </div>
+        </div>
+
+        <!-- Stat Buttons (Below Stats Display) -->
+        <div class="bg-gray-700 p-4 rounded-xl shadow-lg border border-gray-600 mb-8">
+            <h2 class="text-xl sm:text-2xl font-bold mb-4 text-purple-300 text-center">Quick Train Stats</h2>
+            <div id="stat-buttons-container" class="flex justify-between items-center gap-1 sm:gap-2">
+                <!-- Stat buttons will be dynamically inserted here by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Custom Deadlines Section -->
+        <div class="bg-gray-700 p-4 rounded-xl shadow-lg border border-gray-600 mb-8">
+            <h2 class="text-xl sm:text-2xl font-bold mb-4 text-purple-300 text-center">Set Your Deadlines</h2>
+            <div class="flex flex-col sm:flex-row gap-3 mb-4">
+                <select
+                    id="deadline-stat"
+                    class="p-2 rounded-lg bg-gray-900 border border-gray-600 text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                    <option value="art">Art</option>
+                    <option value="wit">Wit</option>
+                    <option value="str">Str</option>
+                    <option value="look">Look</option>
+                    <option value="guts">Guts</option>
+                </select>
+                <input
+                    type="number"
+                    id="deadline-value"
+                    class="flex-grow p-2 rounded-lg bg-gray-900 border border-gray-600 text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="Target value (e.g., 100)"
+                    min="1"
+                />
+                <input
+                    type="month"
+                    id="deadline-month"
+                    class="p-2 rounded-lg bg-gray-900 border border-gray-600 text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+            </div>
+            <button
+                id="add-deadline-btn"
+                class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 focus:ring-offset-gray-800 button-glow"
+            >
+                Add Deadline
+            </button>
+
+            <h3 class="text-xl font-bold mt-6 mb-4 text-purple-300">Your Deadlines:</h3>
+            <ul id="deadlines-list" class="space-y-3">
+                <!-- Deadlines will be dynamically inserted here by JavaScript -->
+            </ul>
+            <p id="no-deadlines-message" class="text-gray-400 mt-4 hidden">No deadlines set yet. Set some goals!</p>
+        </div>
+
+        <div class="text-center text-gray-500 text-xs mt-6">
+            Local User Data
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const messageDisplay = document.getElementById('message-display');
+        const closestDeadlineDisplay = document.getElementById('closest-deadline-display');
+        const closestDeadlineText = document.getElementById('closest-deadline-text');
+        const closestDeadlineDetailsBtn = document.getElementById('closest-deadline-details-btn');
+        const statsContainer = document.getElementById('stats-container');
+        const rankDisplay = document.getElementById('rank-display');
+        const statButtonsContainer = document.getElementById('stat-buttons-container');
+
+        const deadlineStatSelect = document.getElementById('deadline-stat');
+        const deadlineValueInput = document.getElementById('deadline-value');
+        const deadlineMonthInput = document.getElementById('deadline-month');
+        const addDeadlineBtn = document.getElementById('add-deadline-btn');
+        const deadlinesList = document.getElementById('deadlines-list');
+        const noDeadlinesMessage = document.getElementById('no-deadlines-message');
+
+        // Global state
+        const STAT_NAMES = ['art', 'wit', 'str', 'look', 'guts'];
+        const STAT_ICONS = {
+            art: '<i class="fa-solid fa-palette"></i>',
+            wit: '<i class="fa-solid fa-brain"></i>',
+            str: '<i class="fa-solid fa-dumbbell"></i>',
+            look: '<i class="fa-solid fa-star"></i>',
+            guts: '<i class="fa-solid fa-fist-raised"></i>',
+        };
+        const STAT_BUTTON_COLORS = {
+            art: 'stat-button-bg-art',
+            wit: 'stat-button-bg-wit',
+            str: 'stat-button-bg-strength',
+            look: 'stat-button-bg-look',
+            guts: 'stat-button-bg-guts',
+        };
+
+        // Define rank thresholds for individual stats
+        const INDIVIDUAL_STAT_THRESHOLDS = [
+            { rank: 'G', threshold: 0, next: 30 },
+            { rank: 'F', threshold: 30, next: 80 },
+            { rank: 'E', threshold: 80, next: 150 },
+            { rank: 'D', threshold: 150, next: 250 },
+            { rank: 'C', threshold: 250, next: 400 },
+            { rank: 'B', threshold: 400, next: 600 },
+            { rank: 'A', threshold: 600, next: 800 },
+            { rank: 'A+', threshold: 800, next: 900 },
+            { rank: 'S', threshold: 900, next: 950 },
+            { rank: 'S+', threshold: 950, next: 990 },
+            { rank: 'SS+', threshold: 990, next: 999 } // Max cap
+        ];
+
+        // Define rank styling for individual stats
+        const RANK_STYLES = {
+            'G': 'rank-G-bg',
+            'F': 'rank-F-bg',
+            'E': 'rank-E-bg',
+            'D': 'rank-D-bg',
+            'C': 'rank-C-bg',
+            'B': 'rank-B-bg',
+            'A': 'rank-A-bg',
+            'A+': 'rank-Aplus-bg',
+            'S': 'rank-S-bg',
+            'S+': 'rank-Splus-bg',
+            'SS+': 'rank-SSplus-bg'
+        };
+
+        // Define rank text styling for individual stats
+        const RANK_TEXT_STYLES = {
+            'G': 'rank-G-text',
+            'F': 'rank-F-text',
+            'E': 'rank-E-text',
+            'D': 'rank-D-text',
+            'C': 'rank-C-text',
+            'B': 'rank-B-text',
+            'A': 'rank-A-text',
+            'A+': 'rank-Aplus-text',
+            'S': 'rank-S-text',
+            'S+': 'rank-Splus-text',
+            'SS+': 'rank-SSplus-text'
+        };
+
+
+        let stats = {
+            art: 0,
+            wit: 0,
+            str: 0,
+            look: 0,
+            guts: 0,
+        };
+        let deadlines = [];
+
+        // --- Local Storage Functions ---
+        function saveData() {
+            try {
+                localStorage.setItem('personalStats', JSON.stringify(stats));
+                localStorage.setItem('personalDeadlines', JSON.stringify(deadlines));
+                console.log("Data saved to localStorage.");
+            } catch (e) {
+                console.error("Error saving to localStorage:", e);
+                showMessage("Failed to save data. Local storage might be full or unavailable.", 'bg-red-600');
+            }
+        }
+
+        function loadData() {
+            try {
+                const savedStats = localStorage.getItem('personalStats');
+                const savedDeadlines = localStorage.getItem('personalDeadlines');
+
+                if (savedStats) {
+                    stats = JSON.parse(savedStats);
+                    // Ensure all current stats are present, initialize if missing
+                    STAT_NAMES.forEach(stat => {
+                        if (typeof stats[stat] === 'undefined') {
+                            stats[stat] = 0;
+                        }
+                    });
+                    // Handle old 'strength' stat if it exists and convert to 'str'
+                    if (typeof stats.strength !== 'undefined' && typeof stats.str === 'undefined') {
+                        stats.str = stats.strength;
+                        delete stats.strength;
+                    }
+                }
+                if (savedDeadlines) {
+                    deadlines = JSON.parse(savedDeadlines);
+                    // Update deadline targetStat from 'strength' to 'str' if necessary
+                    deadlines = deadlines.map(d => ({
+                        ...d,
+                        targetStat: d.targetStat === 'strength' ? 'str' : d.targetStat
+                    }));
+                }
+                console.log("Data loaded from localStorage.");
+            } catch (e) {
+                console.error("Error loading from localStorage:", e);
+                showMessage("Failed to load data. Your saved progress might be lost.", 'bg-red-600');
+            }
+        }
+
+        // --- UI Update Functions ---
+        function showMessage(msg, type = 'bg-blue-600') {
+            messageDisplay.textContent = msg;
+            messageDisplay.className = `${type} text-white p-3 rounded-lg mb-6 text-center shadow-md`;
+            messageDisplay.classList.remove('hidden');
+            setTimeout(() => {
+                messageDisplay.classList.add('hidden');
+            }, 3000); // Message disappears after 3 seconds
+        }
+
+        function getStatRankLetter(value) {
+            for (let i = INDIVIDUAL_STAT_THRESHOLDS.length - 1; i >= 0; i--) {
+                if (value >= INDIVIDUAL_STAT_THRESHOLDS[i].threshold) {
+                    return INDIVIDUAL_STAT_THRESHOLDS[i].rank;
+                }
+            }
+            return 'G'; // Default for 0 points
+        }
+
+        function getNextRankThreshold(value) {
+            for (let i = 0; i < INDIVIDUAL_STAT_THRESHOLDS.length; i++) {
+                if (value < INDIVIDUAL_STAT_THRESHOLDS[i].next) {
+                    return INDIVIDUAL_STAT_THRESHOLDS[i].next;
+                }
+            }
+            return 999; // If already SS+, next is max cap
+        }
+
+        function calculateOverallRank() {
+            const totalStats = Object.values(stats).reduce((sum, current) => sum + current, 0);
+            // RPG-like scaling for overall rank (total stats up to ~5000)
+            // Adjusted thresholds to "punish" single-stat excelling and encourage balance
+            if (totalStats < 100) return 'F';
+            if (totalStats < 250) return 'E';
+            if (totalStats < 400) return 'D'; // One stat at B (400) would put overall here
+            if (totalStats < 750) return 'C';
+            if (totalStats < 1300) return 'B';
+            if (totalStats < 2000) return 'A';
+            if (totalStats < 2800) return 'A+';
+            if (totalStats < 3700) return 'S';
+            if (totalStats < 4500) return 'S+';
+            return 'SS+'; // 4500+ points (max total 5*999 = 4995)
+        }
+
+        function updateStatsDisplay() {
+            statsContainer.innerHTML = ''; // Clear previous stats
+            STAT_NAMES.forEach(statName => {
+                const value = stats[statName];
+                const statRankLetter = getStatRankLetter(value);
+                const nextThreshold = getNextRankThreshold(value);
+                const rankBgClass = RANK_STYLES[statRankLetter] || ''; // Get dynamic background class
+                const rankTextColorClass = RANK_TEXT_STYLES[statRankLetter] || ''; // Get dynamic text color class
+
+                const statElement = document.createElement('div');
+                // Apply rank background class to the div
+                statElement.className = `stat-item flex flex-col items-center p-1 rounded-lg shadow-inner border border-gray-700 w-[19%] min-w-[55px] ${rankBgClass}`;
+                statElement.setAttribute('data-stat-name', statName); // Add data attribute for glowing effect
+                statElement.innerHTML = `
+                    <div class="flex flex-col items-center text-center">
+                        <span class="text-lg sm:text-3xl font-bold text-yellow-300">${value}</span>
+                        <span class="text-xxs sm:text-xl font-bold text-gray-400">/${nextThreshold === 999 && value >= 990 ? 'MAX' : nextThreshold}</span>
+                        <span class="text-xs sm:text-lg font-extrabold ${rankTextColorClass}">${statRankLetter}</span>
+                    </div>
+                    <span class="text-xxs sm:text-lg font-semibold text-white capitalize flex flex-col items-center mt-1">
+                        ${STAT_ICONS[statName]} <span class="ml-0 sm:ml-1">${statName}</span>
+                    </span>
+                `;
+                statsContainer.appendChild(statElement);
+            });
+            rankDisplay.textContent = `Overall Rank: ${calculateOverallRank()}`;
+        }
+
+        function renderDeadlines() {
+            deadlinesList.innerHTML = ''; // Clear previous deadlines
+            if (deadlines.length === 0) {
+                noDeadlinesMessage.classList.remove('hidden');
+            } else {
+                noDeadlinesMessage.classList.add('hidden');
+                deadlines.forEach(deadline => {
+                    const currentStatValue = stats[deadline.targetStat] || 0;
+                    const progressPercentage = Math.min(100, (currentStatValue / deadline.targetValue) * 100);
+                    const isCompleted = currentStatValue >= deadline.targetValue;
+                    const deadlineDate = new Date(deadline.deadlineMonth + '-01'); // Convert YYYY-MM to Date object
+                    const now = new Date();
+                    const isPastDue = deadlineDate < now && !isCompleted;
+
+                    const progressBarColor = isCompleted ? 'bg-green-500' : (isPastDue ? 'bg-red-500' : 'bg-yellow-500');
+                    const textColor = isCompleted ? 'text-green-300' : (isPastDue ? 'text-red-300' : 'text-yellow-300');
+
+                    const deadlineItem = document.createElement('li');
+                    deadlineItem.className = 'bg-gray-900 p-4 rounded-lg shadow-inner border border-gray-700';
+                    deadlineItem.innerHTML = `
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="font-semibold text-lg capitalize">${deadline.targetStat} Target: ${deadline.targetValue}</span>
+                            <button data-deadline-id="${deadline.id}" class="delete-deadline-btn text-red-400 hover:text-red-600 text-sm font-bold">Delete</button>
+                        </div>
+                        <p class="text-gray-400 text-sm mb-2">By: ${new Date(deadline.deadlineMonth).toLocaleString('default', { month: 'long', year: 'numeric' })}</p>
+                        <div class="w-full bg-gray-600 rounded-full h-3 mb-1">
+                            <div
+                                class="${progressBarColor} h-3 rounded-full stat-bar-fill"
+                                style="width: ${progressPercentage}%;"
+                            ></div>
+                        </div>
+                        <p class="${textColor} text-sm text-right">${currentStatValue} / ${deadline.targetValue} (${progressPercentage.toFixed(1)}%) ${isCompleted ? '(Completed!)' : (isPastDue ? '(Past Due)' : '')}</p>
+                    `;
+                    deadlinesList.appendChild(deadlineItem);
+                });
+
+                // Add event listeners to new "Delete" buttons
+                document.querySelectorAll('.delete-deadline-btn').forEach(button => {
+                    button.onclick = (event) => {
+                        const deadlineId = event.target.dataset.deadlineId;
+                        deleteDeadline(deadlineId);
+                    };
+                });
+            }
+            updateClosestDeadlineDisplay(); // Update closest deadline when deadlines are rendered
+        }
+
+        function renderStatButtons() {
+            statButtonsContainer.innerHTML = ''; // Clear previous buttons
+            STAT_NAMES.forEach(statName => {
+                const button = document.createElement('button');
+                const statLevel = Math.floor(stats[statName] / 10) + 1; // Example: every 10 points is a level
+                // Adjusted size for compactness
+                button.className = `stat-button ${STAT_BUTTON_COLORS[statName]} text-white font-bold text-base flex flex-col items-center justify-center w-[19%] h-20 text-center relative overflow-hidden`; /* Adjusted width to 19% for 5 items with small gap */
+                button.innerHTML = `
+                    <div class="text-2xl mb-1">${STAT_ICONS[statName]}</div>
+                    <span class="text-xs capitalize">${statName}</span>
+                    <span class="text-xxs font-semibold mt-0.5">Lv. ${statLevel}</span>
+                `;
+                button.onclick = () => trainStat(statName); // Directly train the stat
+                statButtonsContainer.appendChild(button);
+            });
+        }
+
+        function updateClosestDeadlineDisplay() {
+            const now = new Date();
+            let closestDeadline = null;
+            let minTimeDiff = Infinity;
+
+            deadlines.forEach(deadline => {
+                const deadlineDate = new Date(deadline.deadlineMonth + '-01');
+                const isCompleted = (stats[deadline.targetStat] || 0) >= deadline.targetValue;
+
+                // Only consider uncompleted deadlines that are in the current or future months
+                if (!isCompleted) {
+                    const deadlineMonthStart = new Date(deadlineDate.getFullYear(), deadlineDate.getMonth(), 1);
+                    const nowMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+                    if (deadlineMonthStart.getTime() >= nowMonthStart.getTime()) { // Deadline is in current month or future
+                         const timeDiff = deadlineDate.getTime() - now.getTime();
+                         if (timeDiff < minTimeDiff) { // Find the closest one
+                            minTimeDiff = timeDiff;
+                            closestDeadline = deadline;
+                         }
+                    }
+                }
+            });
+
+            if (closestDeadline) {
+                const deadlineDate = new Date(closestDeadline.deadlineMonth + '-01');
+                const remainingDays = Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                closestDeadlineText.innerHTML = `
+                    <span class="capitalize">${closestDeadline.targetStat}</span>: ${closestDeadline.targetValue} points
+                    <span class="text-gray-400 ml-1">(${deadlineDate.toLocaleString('default', { month: 'short', year: 'numeric' })} / ${remainingDays} days)</span>
+                `;
+                closestDeadlineDetailsBtn.classList.remove('hidden');
+                closestDeadlineDetailsBtn.onclick = () => {
+                    deadlinesList.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                };
+            } else {
+                closestDeadlineText.textContent = "No upcoming deadlines.";
+                closestDeadlineDetailsBtn.classList.add('hidden');
+            }
+            closestDeadlineDisplay.classList.remove('hidden');
+        }
+
+        function trainStat(statType) {
+            // Get the current stat value before incrementing
+            const oldValue = stats[statType];
+
+            // Increment the stat
+            if (stats.hasOwnProperty(statType)) {
+                stats[statType]++;
+            } else {
+                console.error(`Invalid stat type: ${statType}`);
+                showMessage(`Error: Invalid stat type "${statType}".`, 'bg-red-600');
+                return;
+            }
+
+            saveData();
+            updateStatsDisplay(); // This will re-render all stats
+            renderDeadlines(); // Re-render deadlines as stats might have changed
+            renderStatButtons(); // Re-render stat buttons to update levels
+
+            // Find the specific stat div to apply glow effect
+            const statDivs = document.querySelectorAll('.stat-item');
+            statDivs.forEach(div => {
+                if (div.getAttribute('data-stat-name') === statType) {
+                    div.classList.add('stat-glow');
+                    // Remove glow after animation
+                    setTimeout(() => {
+                        div.classList.remove('stat-glow');
+                    }, 700); // Matches animation duration
+                }
+            });
+
+            showMessage(`Trained ${statType.charAt(0).toUpperCase() + statType.slice(1)}! Your ${statType} increased!`);
+        }
+
+        // --- Deadline Actions ---
+        function addDeadline() {
+            const targetStat = deadlineStatSelect.value;
+            const targetValue = parseInt(deadlineValueInput.value, 10);
+            const deadlineMonth = deadlineMonthInput.value; // YYYY-MM format
+
+            if (!targetStat || isNaN(targetValue) || targetValue <= 0 || !deadlineMonth) {
+                showMessage("Please fill all deadline fields correctly.", 'bg-red-600');
+                return;
+            }
+
+            // Check for duplicate deadline for the same stat and month
+            const existingDeadline = deadlines.find(d => d.targetStat === targetStat && d.deadlineMonth === deadlineMonth);
+            if (existingDeadline) {
+                showMessage(`A deadline for ${targetStat.charAt(0).toUpperCase() + targetStat.slice(1)} in ${new Date(deadlineMonth).toLocaleString('default', { month: 'long', year: 'numeric' })} already exists.`, 'bg-red-600');
+                return;
+            }
+
+            const newDeadline = {
+                id: Date.now().toString(),
+                targetStat: targetStat,
+                targetValue: targetValue,
+                deadlineMonth: deadlineMonth,
+            };
+
+            deadlines.push(newDeadline);
+            saveData();
+            renderDeadlines();
+            deadlineValueInput.value = '';
+            deadlineMonthInput.value = '';
+            showMessage(`Deadline for ${targetStat.charAt(0).toUpperCase() + targetStat.slice(1)} added!`);
+        }
+
+        function deleteDeadline(id) {
+            deadlines = deadlines.filter(d => d.id !== id);
+            saveData();
+            renderDeadlines();
+            showMessage("Deadline deleted.", 'bg-blue-600');
+        }
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            updateStatsDisplay();
+            renderDeadlines(); // Render deadlines and update closest deadline display
+            renderStatButtons(); // Render the new stat buttons
+
+            addDeadlineBtn.onclick = addDeadline;
+        });
+    </script>
+</body>
+</html>
