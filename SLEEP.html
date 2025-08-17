@@ -1,0 +1,434 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Sleep & Power — Mini v3 (auto-sim)</title>
+<style>
+  :root{
+    --bg-dark:#041226;
+    --card-dark:#062033;
+    --text:#dfefff;
+    --muted:#90b0d6;
+    --accent:#2dd4bf;
+    --on-bg:#fff7ed;
+    --on-text:#0b1220;
+  }
+  html,body{height:100%;margin:0;font-family:system-ui,Roboto,Arial;background:var(--bg-dark);color:var(--text);}
+  .wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:18px}
+  .sheet{width:100%;max-width:520px;text-align:center}
+  h1{margin:0 0 12px;font-size:20px}
+  .card{background:var(--card-dark);padding:14px;border-radius:12px;margin-bottom:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+  .row{display:flex;justify-content:center;gap:12px;align-items:center;flex-wrap:wrap}
+  .muted{color:var(--muted);font-size:13px}
+  .big{font-weight:800;font-size:18px}
+  /* Toggle switch */
+  .switch{
+    --w:78px; --h:38px; --pad:4px;
+    position:relative;width:var(--w);height:var(--h);display:inline-block;
+  }
+  .switch input{display:none}
+  .track{
+    position:absolute;inset:0;background:rgba(255,255,255,0.06);border-radius:999px;transition:background .18s, transform .18s;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.02);
+  }
+  .knob{
+    position:absolute;top:var(--pad);left:var(--pad);width:calc(var(--h) - var(--pad)*2);height:calc(var(--h) - var(--pad)*2);
+    background:linear-gradient(180deg, #fff,#e6e6e6);border-radius:50%;box-shadow:0 6px 14px rgba(2,6,23,0.45);
+    transition: transform .18s cubic-bezier(.2,.9,.3,1), left .18s;
+    display:flex;align-items:center;justify-content:center;font-size:12px;color:#0b1220;font-weight:700;
+  }
+  .switch input:checked + .track{background:linear-gradient(90deg, #9ae6b4, #34d399);}
+  .switch input:checked + .track + .knob{ transform: translateX(calc(var(--w) - var(--h))); }
+  .label-under{font-size:13px;color:var(--muted);margin-top:8px}
+  .btn {padding:8px 12px;border-radius:8px;border:0;background:#0f1724;color:#fff;font-weight:700}
+  .modal-back{position:fixed;inset:0;background:rgba(3,6,12,0.6);display:none;align-items:center;justify-content:center;z-index:60}
+  .modal{background:#071832;padding:14px;border-radius:10px;min-width:280px;max-width:520px}
+  .modal h3{margin:0 0 8px}
+  .modal .row{flex-direction:column;gap:8px;align-items:stretch}
+  input[type=datetime-local]{padding:8px;border-radius:8px;border:0;background:#021220;color:var(--text)}
+  .muted-small{font-size:12px;color:var(--muted)}
+  /* theme when lights on */
+  body.lights-on{background:var(--on-bg);color:var(--on-text)}
+  body.lights-on .sheet .card{background:#fff9f2}
+  body.lights-on .muted{color:#6d4a31}
+  body.lights-on .knob{background:linear-gradient(180deg,#fff,#fff);color:var(--on-text)}
+  body.lights-on .track{box-shadow:inset 0 1px 0 rgba(0,0,0,0.02)}
+  @media (max-width:420px){ .switch{--w:68px;--h:34px} .big{font-size:16px} }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="sheet">
+      <h1>⚡ Sleep & Power — Mini (auto-sim)</h1>
+
+      <div class="card" id="powerCard">
+        <div class="row" style="align-items:center">
+          <label style="display:flex;flex-direction:column;align-items:center;gap:6px">
+            <div style="font-size:13px;color:var(--muted)">Electricity</div>
+            <div class="switch">
+              <input id="powerToggle" type="checkbox" />
+              <div class="track"></div>
+              <div class="knob" id="powerKnob">OFF</div>
+            </div>
+          </label>
+
+          <label style="display:flex;flex-direction:column;align-items:center;gap:6px">
+            <div style="font-size:13px;color:var(--muted)">Sleep</div>
+            <div class="switch">
+              <input id="sleepToggle" type="checkbox" />
+              <div class="track"></div>
+              <div class="knob" id="sleepKnob">REST</div>
+            </div>
+          </label>
+        </div>
+
+        <div class="label-under muted" style="margin-top:10px">
+          Last power: <span id="lastPower">—</span> &nbsp; | &nbsp; Last sleep: <span id="lastSleep">—</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div>Inferred routine: <span id="routine" class="big">Unknown</span> &nbsp; (<span id="conf">0%</span>)</div>
+        <div style="margin-top:8px" class="muted">Next expected change: <span id="nextChange">—</span></div>
+      </div>
+
+      <div class="card">
+        <div>Total sleep last 24h: <span id="sleep24" class="big">0 min</span></div>
+        <div style="margin-top:6px" class="muted">Goal: 480 min (8 hr). Status: <span id="goalStatus">Not enough</span></div>
+      </div>
+
+      <div class="card muted" style="font-size:13px">
+        Tip: if you only log ON at night, the app will ask when power last CUT OFF and then auto-simulate the schedule forward so you don't have to enter a resume time.
+      </div>
+    </div>
+  </div>
+
+  <!-- calibration modal -->
+  <div id="modalBack" class="modal-back">
+    <div class="modal">
+      <h3>Calibration — last power cutoff?</h3>
+      <div class="muted-small">You're recording POWER ON at night but there's no recent data. Enter when power last CUT OFF (resume time optional). If you leave resume empty the app will auto-simulate the schedule forward to now.</div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;justify-content:space-between">
+        <div style="flex:1;min-width:180px">
+          <label class="muted-small">Cutoff (OFF) time</label><br>
+          <input id="cutoffInput" type="datetime-local" />
+        </div>
+        <div style="flex:1;min-width:180px">
+          <label class="muted-small">Resume (ON) time — optional</label><br>
+          <input id="resumeInput" type="datetime-local" />
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button id="skipBtn" class="btn">Skip</button>
+        <button id="saveCutoff" class="btn">Save</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* Storage keys */
+const K = {P:'pwr_v3', S:'sleep_v3'};
+
+/* Load */
+let powerEvents = JSON.parse(localStorage.getItem(K.P) || '[]'); // newest first {ts,on}
+let sleeps = JSON.parse(localStorage.getItem(K.S) || '[]');    // newest first {start,end,mins}
+
+/* DOM */
+const powerToggle = document.getElementById('powerToggle');
+const sleepToggle = document.getElementById('sleepToggle');
+const powerKnob = document.getElementById('powerKnob');
+const sleepKnob = document.getElementById('sleepKnob');
+
+const lastPowerEl = document.getElementById('lastPower');
+const lastSleepEl = document.getElementById('lastSleep');
+const routineEl = document.getElementById('routine');
+const confEl = document.getElementById('conf');
+const nextEl = document.getElementById('nextChange');
+const sleep24El = document.getElementById('sleep24');
+const goalStatusEl = document.getElementById('goalStatus');
+
+const modalBack = document.getElementById('modalBack');
+const cutoffInput = document.getElementById('cutoffInput');
+const resumeInput = document.getElementById('resumeInput');
+const saveCutoff = document.getElementById('saveCutoff');
+const skipBtn = document.getElementById('skipBtn');
+
+let sleeping = false, curStart = null;
+let pendingEvent = null;
+
+/* Routine helpers */
+function tMin(d){ return d.getHours()*60 + d.getMinutes(); }
+function inRange(t,s,e){ if(s<=e) return t>=s && t<e; return t>=s || t<e; }
+function expectedAt(r, date){
+  const t=tMin(date);
+  if(r==='C') return true;
+  if(inRange(t,21*60,24*60) || inRange(t,0,5*60)) return true;
+  if(r==='A'){
+    if(inRange(t,5*60,9*60)) return false;
+    if(inRange(t,9*60,13*60)) return true;
+    if(inRange(t,13*60,17*60)) return false;
+    if(inRange(t,17*60,21*60)) return true;
+  } else if(r==='B'){
+    if(inRange(t,5*60,9*60)) return true;
+    if(inRange(t,9*60,13*60)) return false;
+    if(inRange(t,13*60,17*60)) return true;
+    if(inRange(t,17*60,21*60)) return false;
+  }
+  return false;
+}
+
+/* Save/load */
+function saveAll(){ localStorage.setItem(K.P, JSON.stringify(powerEvents)); localStorage.setItem(K.S, JSON.stringify(sleeps)); }
+function fmtISO(iso){ if(!iso) return '—'; return new Date(iso).toLocaleString(); }
+
+/* Render UI + theme */
+function render(){
+  const currentOn = powerEvents.length ? powerEvents[0].on : false;
+  document.body.classList.toggle('lights-on', !!currentOn);
+
+  powerKnob.textContent = currentOn ? 'ON' : 'OFF';
+  sleepKnob.textContent = sleeping ? 'WAKE' : 'REST';
+
+  powerToggle.checked = !!currentOn;
+  sleepToggle.checked = !!sleeping;
+
+  lastPowerEl.textContent = powerEvents.length ? `${fmtISO(powerEvents[0].ts)} — ${powerEvents[0].on ? 'ON':'OFF'}` : '—';
+  lastSleepEl.textContent = sleeps.length ? `${fmtISO(sleeps[0].start)} → ${fmtISO(sleeps[0].end)} (${sleeps[0].mins}m)` : (sleeping ? `Sleeping since ${new Date(curStart).toLocaleString()}` : '—');
+
+  const inf = infer();
+  routineEl.textContent = inf.r || 'Unknown';
+  confEl.textContent = `${inf.c}%`;
+
+  const next = nextToggleFor(inf.r);
+  nextEl.textContent = next ? `${next.state} at ${next.time.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}` : 'No change predicted soon';
+
+  const s24 = sleepLast24();
+  sleep24El.textContent = `${s24} min`;
+  goalStatusEl.textContent = s24 >= 480 ? 'Good (>=8h)' : 'Not enough';
+}
+
+/* Record power event with calibration modal logic */
+function recordPower(on){
+  const now = new Date();
+  const isNight = inRange(tMin(now), 21*60, 5*60);
+  const lastEvent = powerEvents[0] ? new Date(powerEvents[0].ts) : null;
+  const gapTooBig = !lastEvent || (now - lastEvent) > (48*3600000);
+  if(on && isNight && gapTooBig && powerEvents.length < 5){
+    // ask for cutoff, but we will auto-simulate if resume left empty
+    pendingEvent = {ts: now.toISOString(), on:true};
+    showCalibrationModal();
+    return;
+  }
+  powerEvents.unshift({ts: new Date().toISOString(), on: !!on});
+  if(powerEvents.length>500) powerEvents.length=500;
+  saveAll(); render();
+}
+
+/* Show modal */
+function showCalibrationModal(){
+  // default cutoff: yesterday 17:00 (sensible default)
+  const d = new Date();
+  d.setDate(d.getDate()-1);
+  d.setHours(9,0,0,0); // default to 9am yesterday to speed up entry (user can change)
+  cutoffInput.value = d.toISOString().slice(0,16);
+  resumeInput.value = '';
+  modalBack.style.display = 'flex';
+}
+
+/* Simulation: generate transitions for a routine from cutoff (OFF) to 'until' */
+function simulateTransitions(routine, cutoffISO, untilDate){
+  // We'll step in 5-minute increments and record times when expectedAt changes.
+  const start = new Date(cutoffISO);
+  const until = new Date(untilDate);
+  const entries = [];
+  let lastState = false; // cutoff is OFF
+  // make sure initial OFF at cutoff is recorded
+  entries.push({ts: start.toISOString(), on:false});
+  // step forward
+  for(let t = new Date(start.getTime() + 5*60000); t <= until; t = new Date(t.getTime() + 5*60000)){
+    const s = expectedAt(routine, t);
+    if(s !== lastState){
+      entries.push({ts: t.toISOString(), on: s});
+      lastState = s;
+    }
+    // safety cap: don't simulate beyond 7 days
+    if((t - start) > 7*24*3600000) break;
+  }
+  return entries;
+}
+
+/* score a simulated timeline vs any existing events and pending event */
+function scoreSimulation(simEvents, pending){
+  // look for matches against existing real events within window spanned by simEvents
+  if(simEvents.length === 0) return 0;
+  const simStart = new Date(simEvents[0].ts);
+  const simEnd = new Date(simEvents[simEvents.length - 1].ts);
+  // gather real events that fall inside (simStart -1min .. simEnd +1min)
+  const relevantReal = powerEvents.map(e=>({t:new Date(e.ts), on:e.on})).filter(e=> e.t >= simStart && e.t <= simEnd);
+  let matches = 0;
+  relevantReal.forEach(real=>{
+    // find simulated state at that exact time (last sim event <= real.t)
+    const simBefore = simEvents.slice().reverse().find(se => new Date(se.ts) <= real.t);
+    const simState = simBefore ? simBefore.on : simEvents[0].on;
+    if(simState === real.on) matches++;
+  });
+  // reward match with pending event: if pending exists, check its on equals simulated final state
+  let pendingScore = 0;
+  if(pending){
+    const finalState = simEvents.length ? simEvents[simEvents.length-1].on : null;
+    if(finalState === pending.on) pendingScore = 0.5;
+  }
+  // also shorter sequence (fewer transitions) slightly preferred (avoid overly jumpy)
+  const brevityBonus = Math.max(0, 1 - simEvents.length/100); // tiny
+  // final score
+  return matches + pendingScore + brevityBonus;
+}
+
+/* save handler for modal */
+saveCutoff.addEventListener('click', ()=>{
+  const cutoffVal = cutoffInput.value;
+  const resumeVal = resumeInput.value;
+  if(!cutoffVal){ alert('Pick a cutoff date/time or press Skip'); return; }
+  // Always record the OFF at cutoff
+  const offTs = new Date(cutoffVal).toISOString();
+  powerEvents.unshift({ts: offTs, on:false});
+
+  if(resumeVal){
+    // user gave resume explicitly — use that then add pending if any
+    const onTs = new Date(resumeVal).toISOString();
+    powerEvents.unshift({ts: onTs, on:true});
+    if(pendingEvent) powerEvents.unshift(pendingEvent);
+  } else {
+    // NO resume provided: auto-simulate both A and B forward from cutoff to now and pick best
+    const now = new Date();
+    const simA = simulateTransitions('A', offTs, now);
+    const simB = simulateTransitions('B', offTs, now);
+    const scoreA = scoreSimulation(simA, pendingEvent);
+    const scoreB = scoreSimulation(simB, pendingEvent);
+    // choose best (tie-breaker prefer A)
+    const chosen = (scoreB > scoreA) ? {sim:simB, name:'B'} : {sim:simA, name:'A'};
+    // append all simulation events (except the initial OFF we already inserted — avoid dup)
+    // we will merge then sort and unique by timestamp+state
+    const toInsert = chosen.sim.map(e=>({ts:e.ts, on:e.on}));
+    // ensure we don't insert duplicate OFF at exact cutoff twice (we already inserted offTs)
+    // merge:
+    powerEvents = powerEvents.concat(toInsert);
+    // also keep pending event
+    if(pendingEvent) powerEvents.push(pendingEvent);
+  }
+
+  // sort newest-first and deduplicate consecutive duplicates
+  powerEvents.sort((a,b)=> new Date(b.ts) - new Date(a.ts));
+  // remove duplicates (same ts and same state), and collapse near-duplicates within 1 minute preferring earliest event
+  const cleaned = [];
+  for(let i=0;i<powerEvents.length;i++){
+    const cur = powerEvents[i];
+    if(cleaned.length === 0){ cleaned.push(cur); continue; }
+    const prev = cleaned[cleaned.length-1];
+    if(prev.ts === cur.ts && prev.on === cur.on) continue;
+    const prevDate = new Date(prev.ts), curDate = new Date(cur.ts);
+    if(Math.abs(prevDate - curDate) <= 60000 && prev.on === cur.on){
+      // keep earlier (we have newest-first, so keep prev and skip cur)
+      continue;
+    }
+    cleaned.push(cur);
+  }
+  powerEvents = cleaned;
+  if(powerEvents.length>1000) powerEvents.length=1000;
+  pendingEvent = null;
+  saveAll();
+  modalBack.style.display = 'none';
+  render();
+});
+
+/* skip handler */
+skipBtn.addEventListener('click', ()=>{
+  if(pendingEvent) powerEvents.unshift(pendingEvent);
+  pendingEvent = null;
+  powerEvents.sort((a,b)=> new Date(b.ts) - new Date(a.ts));
+  saveAll();
+  modalBack.style.display = 'none';
+  render();
+});
+
+/* Sleep toggle logic */
+function toggleSleep(){
+  if(!sleeping){
+    sleeping = true;
+    curStart = new Date().toISOString();
+  } else {
+    sleeping = false;
+    const end = new Date().toISOString();
+    const mins = Math.round((new Date(end) - new Date(curStart))/60000);
+    sleeps.unshift({start: curStart, end, mins});
+    if(sleeps.length>500) sleeps.length=500;
+    curStart = null;
+    saveAll();
+  }
+  render();
+}
+powerToggle.addEventListener('change', ()=>{ recordPower(powerToggle.checked); });
+sleepToggle.addEventListener('change', ()=>{ toggleSleep(); });
+
+/* Inference (same as before) */
+function infer(){
+  if(powerEvents.length === 0) return {r:null,c:0};
+  const N = Math.min(40, powerEvents.length);
+  const slice = powerEvents.slice(0,N);
+  let cnt={A:0,B:0,C:0};
+  slice.forEach(e=>{
+    const d=new Date(e.ts);
+    if(expectedAt('A',d) === e.on) cnt.A++;
+    if(expectedAt('B',d) === e.on) cnt.B++;
+    if(expectedAt('C',d) === e.on) cnt.C++;
+  });
+  const confA = Math.round(100*cnt.A/N);
+  const confB = Math.round(100*cnt.B/N);
+  const confC = Math.round(100*cnt.C/N);
+  let best='A',bestVal=confA;
+  if(confB>bestVal){best='B';bestVal=confB;}
+  if(confC>bestVal){best='C';bestVal=confC;}
+  return {r: bestVal>=55?best:null, c:bestVal};
+}
+function nextToggleFor(r){
+  const start=new Date();
+  if(!r) r='A';
+  const nowMin = start.getTime();
+  const limit = new Date(nowMin + 36*3600000); // 36h
+  let lastState = expectedAt(r,start);
+  for(let t = new Date(nowMin + 5*60000); t <= limit; t = new Date(t.getTime()+5*60000)){
+    const s = expectedAt(r,t);
+    if(s !== lastState){
+      return {time:t, state:s ? 'ON' : 'OFF'};
+    }
+  }
+  return null;
+}
+function sleepLast24(){
+  const cutoff = new Date(Date.now() - 24*3600000);
+  let total=0;
+  sleeps.forEach(s=>{
+    const st=new Date(s.start), en=new Date(s.end);
+    if(en <= cutoff) return;
+    const start = st < cutoff ? cutoff : st;
+    const end = en;
+    total += Math.max(0, Math.round((end-start)/60000));
+  });
+  if(sleeping && curStart){
+    const st = new Date(curStart);
+    const start = st < cutoff ? cutoff : st;
+    const end = new Date();
+    if(end>start) total += Math.round((end-start)/60000);
+  }
+  return total;
+}
+
+/* Init */
+render();
+/* periodic refresh so theme & next-change update */
+setInterval(render,15000);
+</script>
+</body>
+</html>
