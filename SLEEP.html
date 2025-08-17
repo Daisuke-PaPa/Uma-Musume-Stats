@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Sleep & Power — Mini v3 (auto-sim)</title>
+<title>Sleep & Power — Mini v5 (strict schedule)</title>
 <style>
   :root{
     --bg-dark:#041226;
@@ -45,8 +45,7 @@
   .modal-back{position:fixed;inset:0;background:rgba(3,6,12,0.6);display:none;align-items:center;justify-content:center;z-index:60}
   .modal{background:#071832;padding:14px;border-radius:10px;min-width:280px;max-width:520px}
   .modal h3{margin:0 0 8px}
-  .modal .row{flex-direction:column;gap:8px;align-items:stretch}
-  input[type=datetime-local]{padding:8px;border-radius:8px;border:0;background:#021220;color:var(--text)}
+  input[type=datetime-local]{padding:8px;border-radius:8px;border:0;background:#021220;color:var(--text);width:100%}
   .muted-small{font-size:12px;color:var(--muted)}
   /* theme when lights on */
   body.lights-on{background:var(--on-bg);color:var(--on-text)}
@@ -55,12 +54,13 @@
   body.lights-on .knob{background:linear-gradient(180deg,#fff,#fff);color:var(--on-text)}
   body.lights-on .track{box-shadow:inset 0 1px 0 rgba(0,0,0,0.02)}
   @media (max-width:420px){ .switch{--w:68px;--h:34px} .big{font-size:16px} }
+  .log {white-space:pre-wrap;font-size:13px;color:#cfe8ff;margin-top:8px;text-align:left}
 </style>
 </head>
 <body>
   <div class="wrap">
     <div class="sheet">
-      <h1>⚡ Sleep & Power — Mini (auto-sim)</h1>
+      <h1>⚡ Sleep & Power — Mini v5</h1>
 
       <div class="card" id="powerCard">
         <div class="row" style="align-items:center">
@@ -99,8 +99,14 @@
       </div>
 
       <div class="card muted" style="font-size:13px">
-        Tip: if you only log ON at night, the app will ask when power last CUT OFF and then auto-simulate the schedule forward so you don't have to enter a resume time.
+        Tip: All events are snapped to exact routine transition times (05:00, 09:00, 13:00, 17:00, 21:00). If you tap ON at 15:52, it becomes 13:00 (the last ON transition) — guaranteed.
       </div>
+
+      <div style="text-align:center;margin-top:6px">
+        <button id="showLog" class="btn">Show Log (debug)</button>
+      </div>
+      <div id="logOut" class="log" style="display:none"></div>
+
     </div>
   </div>
 
@@ -108,28 +114,27 @@
   <div id="modalBack" class="modal-back">
     <div class="modal">
       <h3>Calibration — last power cutoff?</h3>
-      <div class="muted-small">You're recording POWER ON at night but there's no recent data. Enter when power last CUT OFF (resume time optional). If you leave resume empty the app will auto-simulate the schedule forward to now.</div>
-      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;justify-content:space-between">
-        <div style="flex:1;min-width:180px">
+      <div class="muted-small">Enter when power last CUT OFF (resume optional). If you leave resume empty the app will auto-simulate forward to now and backfill your observed ON to the closest earlier routine ON time.</div>
+      <div style="margin-top:10px">
+        <div style="margin-bottom:8px">
           <label class="muted-small">Cutoff (OFF) time</label><br>
           <input id="cutoffInput" type="datetime-local" />
         </div>
-        <div style="flex:1;min-width:180px">
+        <div style="margin-bottom:8px">
           <label class="muted-small">Resume (ON) time — optional</label><br>
           <input id="resumeInput" type="datetime-local" />
         </div>
-      </div>
-
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
-        <button id="skipBtn" class="btn">Skip</button>
-        <button id="saveCutoff" class="btn">Save</button>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+          <button id="skipBtn" class="btn">Skip</button>
+          <button id="saveCutoff" class="btn">Save</button>
+        </div>
       </div>
     </div>
   </div>
 
 <script>
 /* Storage keys */
-const K = {P:'pwr_v3', S:'sleep_v3'};
+const K = {P:'pwr_v5', S:'sleep_v5'};
 
 /* Load */
 let powerEvents = JSON.parse(localStorage.getItem(K.P) || '[]'); // newest first {ts,on}
@@ -155,14 +160,20 @@ const resumeInput = document.getElementById('resumeInput');
 const saveCutoff = document.getElementById('saveCutoff');
 const skipBtn = document.getElementById('skipBtn');
 
+const showLogBtn = document.getElementById('showLog');
+const logOut = document.getElementById('logOut');
+
 let sleeping = false, curStart = null;
 let pendingEvent = null;
 
-/* Routine helpers */
+/* Routine helpers (transition times are strict) */
+const TRANS_TIMES = [ {h:5,m:0}, {h:9,m:0}, {h:13,m:0}, {h:17,m:0}, {h:21,m:0} ]; // daily transitions
 function tMin(d){ return d.getHours()*60 + d.getMinutes(); }
 function inRange(t,s,e){ if(s<=e) return t>=s && t<e; return t>=s || t<e; }
+
+// expectedAt unchanged (A/B/C decision logic)
 function expectedAt(r, date){
-  const t=tMin(date);
+  const t = tMin(date);
   if(r==='C') return true;
   if(inRange(t,21*60,24*60) || inRange(t,0,5*60)) return true;
   if(r==='A'){
@@ -182,6 +193,67 @@ function expectedAt(r, date){
 /* Save/load */
 function saveAll(){ localStorage.setItem(K.P, JSON.stringify(powerEvents)); localStorage.setItem(K.S, JSON.stringify(sleeps)); }
 function fmtISO(iso){ if(!iso) return '—'; return new Date(iso).toLocaleString(); }
+
+/* Utils: produce exact transition Date objects for a given day */
+function transitionsForDay(dayDate){
+  // dayDate is a Date set to the day (any time); return transition objects for that date
+  const arr = [];
+  const base = new Date(dayDate);
+  base.setHours(0,0,0,0);
+  TRANS_TIMES.forEach(t => {
+    const d = new Date(base);
+    d.setHours(t.h, t.m, 0, 0);
+    arr.push(d);
+  });
+  // also include midnight of next day as convenience (not a transition by definition)
+  return arr;
+}
+
+/* Given a routine and a window, build exact transitions (with state) */
+function buildExactSchedule(routine, fromISO, toDate){
+  // returns array of {ts, on} from > fromISO up to <= toDate (chronological ascending)
+  const start = new Date(fromISO);
+  const end = new Date(toDate);
+  const list = [];
+  // start state is OFF at cutoff by convention (when called from calibration)
+  // but here: we'll determine state at each transition by expectedAt just after transition time
+  // iterate days from start.date() to end.date()
+  const startDay = new Date(start); startDay.setHours(0,0,0,0);
+  const endDay = new Date(end); endDay.setHours(0,0,0,0);
+  for(let day = new Date(startDay); day <= endDay; day.setDate(day.getDate()+1)){
+    const tlist = transitionsForDay(day);
+    tlist.forEach(tdate => {
+      if(tdate > start && tdate <= end){
+        // determine state immediately after this transition moment
+        const after = new Date(tdate.getTime() + 1000); // 1 second after
+        const on = expectedAt(routine, after);
+        list.push({ts: tdate.toISOString(), on});
+      }
+    });
+  }
+  // Ensure chronological ascending
+  list.sort((a,b)=> new Date(a.ts) - new Date(b.ts));
+  return list;
+}
+
+/* getLastTransitionAtOrBefore: find most recent transition <= date for routine with specific state (optional) */
+function getLastTransitionAtOrBefore(routine, date, desiredState=null, lookbackDays=7){
+  const dt = new Date(date);
+  for(let d=0; d<=lookbackDays; d++){
+    const day = new Date(dt); day.setDate(dt.getDate() - d); day.setHours(0,0,0,0);
+    const tlist = transitionsForDay(day);
+    // iterate in reverse order (latest first)
+    for(let i = tlist.length-1; i>=0; i--){
+      const tdate = tlist[i];
+      if(tdate <= dt){
+        const after = new Date(tdate.getTime() + 1000);
+        const on = expectedAt(routine, after);
+        if(desiredState === null || on === desiredState) return {ts:tdate.toISOString(), on};
+      }
+    }
+  }
+  return null;
+}
 
 /* Render UI + theme */
 function render(){
@@ -209,134 +281,227 @@ function render(){
   goalStatusEl.textContent = s24 >= 480 ? 'Good (>=8h)' : 'Not enough';
 }
 
-/* Record power event with calibration modal logic */
+/* When user taps power: snap to exact transition if possible.
+   If a routine is inferred, snap according to that routine; otherwise try to use both routines and pick the one whose last transition <= now has the desired state. */
 function recordPower(on){
   const now = new Date();
   const isNight = inRange(tMin(now), 21*60, 5*60);
   const lastEvent = powerEvents[0] ? new Date(powerEvents[0].ts) : null;
   const gapTooBig = !lastEvent || (now - lastEvent) > (48*3600000);
+
+  // Calibration path (no recent history)
   if(on && isNight && gapTooBig && powerEvents.length < 5){
-    // ask for cutoff, but we will auto-simulate if resume left empty
-    pendingEvent = {ts: now.toISOString(), on:true};
+    pendingEvent = {observedAt: now.toISOString(), on:true};
     showCalibrationModal();
     return;
   }
-  powerEvents.unshift({ts: new Date().toISOString(), on: !!on});
-  if(powerEvents.length>500) powerEvents.length=500;
-  saveAll(); render();
+
+  // Normal tap -> snap to a transition time if possible
+  // First try to infer routine
+  const inf = infer();
+  let usedTs = null;
+  if(inf.r){
+    // find last transition <= now that has state == on
+    const last = getLastTransitionAtOrBefore(inf.r, now, on, 7);
+    if(last) usedTs = last.ts;
+  } else {
+    // no inferred routine: try both routines and pick the one that gives a matching last transition
+    let candidate = null;
+    ['A','B'].forEach(r => {
+      const last = getLastTransitionAtOrBefore(r, now, on, 7);
+      if(last && (!candidate || new Date(last.ts) > new Date(candidate.ts))) candidate = last;
+    });
+    if(candidate) usedTs = candidate.ts;
+  }
+
+  if(usedTs){
+    // Add event snapped to usedTs
+    powerEvents.unshift({ts: usedTs, on: !!on});
+  } else {
+    // fallback: if no transition found in lookback window, just insert now (but snapped to minute)
+    const fallback = new Date();
+    fallback.setSeconds(0,0);
+    powerEvents.unshift({ts: fallback.toISOString(), on: !!on});
+  }
+
+  if(powerEvents.length>1500) powerEvents.length=1500;
+  saveAll();
+  render();
 }
 
 /* Show modal */
 function showCalibrationModal(){
-  // default cutoff: yesterday 17:00 (sensible default)
+  // default cutoff: yesterday 09:00 (fast)
   const d = new Date();
   d.setDate(d.getDate()-1);
-  d.setHours(9,0,0,0); // default to 9am yesterday to speed up entry (user can change)
+  d.setHours(9,0,0,0);
   cutoffInput.value = d.toISOString().slice(0,16);
   resumeInput.value = '';
   modalBack.style.display = 'flex';
 }
 
-/* Simulation: generate transitions for a routine from cutoff (OFF) to 'until' */
-function simulateTransitions(routine, cutoffISO, untilDate){
-  // We'll step in 5-minute increments and record times when expectedAt changes.
-  const start = new Date(cutoffISO);
-  const until = new Date(untilDate);
-  const entries = [];
-  let lastState = false; // cutoff is OFF
-  // make sure initial OFF at cutoff is recorded
-  entries.push({ts: start.toISOString(), on:false});
-  // step forward
-  for(let t = new Date(start.getTime() + 5*60000); t <= until; t = new Date(t.getTime() + 5*60000)){
-    const s = expectedAt(routine, t);
-    if(s !== lastState){
-      entries.push({ts: t.toISOString(), on: s});
-      lastState = s;
-    }
-    // safety cap: don't simulate beyond 7 days
-    if((t - start) > 7*24*3600000) break;
-  }
-  return entries;
-}
-
-/* score a simulated timeline vs any existing events and pending event */
+/* Improved scoring: normalized match rate + pending weight + tolerance */
 function scoreSimulation(simEvents, pending){
-  // look for matches against existing real events within window spanned by simEvents
-  if(simEvents.length === 0) return 0;
+  if(simEvents.length === 0) return {score:0, matches:0, realCount:0, pendingMatch:false, matchRate:0};
+
   const simStart = new Date(simEvents[0].ts);
   const simEnd = new Date(simEvents[simEvents.length - 1].ts);
-  // gather real events that fall inside (simStart -1min .. simEnd +1min)
+
+  // relevant real events inside sim window
   const relevantReal = powerEvents.map(e=>({t:new Date(e.ts), on:e.on})).filter(e=> e.t >= simStart && e.t <= simEnd);
+
   let matches = 0;
-  relevantReal.forEach(real=>{
-    // find simulated state at that exact time (last sim event <= real.t)
-    const simBefore = simEvents.slice().reverse().find(se => new Date(se.ts) <= real.t);
+  const TOL_MS = 5*60000; // 5 minutes tolerance for matching only
+
+  relevantReal.forEach(real => {
+    // find latest sim event <= real.t + tol
+    let simBefore = null;
+    for(let i = simEvents.length - 1; i >= 0; i--){
+      const sT = new Date(simEvents[i].ts);
+      if(sT <= new Date(real.t.getTime() + TOL_MS)){
+        simBefore = simEvents[i];
+        break;
+      }
+    }
     const simState = simBefore ? simBefore.on : simEvents[0].on;
     if(simState === real.on) matches++;
   });
-  // reward match with pending event: if pending exists, check its on equals simulated final state
-  let pendingScore = 0;
-  if(pending){
-    const finalState = simEvents.length ? simEvents[simEvents.length-1].on : null;
-    if(finalState === pending.on) pendingScore = 0.5;
+
+  const realCount = Math.max(1, relevantReal.length);
+  const matchRate = matches / realCount;
+
+  let pendingMatch = false;
+  if(pending && pending.observedAt){
+    const observed = new Date(pending.observedAt);
+    // find simulated state at observed time (last sim event <= observed + tol)
+    let simBefore = null;
+    for(let i = simEvents.length - 1; i >= 0; i--){
+      const sT = new Date(simEvents[i].ts);
+      if(sT <= new Date(observed.getTime() + TOL_MS)){
+        simBefore = simEvents[i];
+        break;
+      }
+    }
+    const simState = simBefore ? simBefore.on : simEvents[0].on;
+    pendingMatch = (simState === pending.on);
+  } else if(pending && pending.on !== undefined){
+    const finalState = simEvents[simEvents.length - 1].on;
+    pendingMatch = (finalState === pending.on);
   }
-  // also shorter sequence (fewer transitions) slightly preferred (avoid overly jumpy)
-  const brevityBonus = Math.max(0, 1 - simEvents.length/100); // tiny
-  // final score
-  return matches + pendingScore + brevityBonus;
+
+  const brevity = Math.max(0, 1 - simEvents.length / 200);
+
+  const SCORE = (matchRate * 0.7) + (pendingMatch ? 0.25 : 0) + (brevity * 0.05);
+
+  return { score: SCORE, matches, realCount, pendingMatch, matchRate };
 }
 
-/* save handler for modal */
+/* save handler for modal (now using exact transitions and strict backfill) */
 saveCutoff.addEventListener('click', ()=>{
   const cutoffVal = cutoffInput.value;
   const resumeVal = resumeInput.value;
   if(!cutoffVal){ alert('Pick a cutoff date/time or press Skip'); return; }
-  // Always record the OFF at cutoff
+  // Always record the OFF at cutoff (exact)
   const offTs = new Date(cutoffVal).toISOString();
   powerEvents.unshift({ts: offTs, on:false});
 
   if(resumeVal){
-    // user gave resume explicitly — use that then add pending if any
-    const onTs = new Date(resumeVal).toISOString();
-    powerEvents.unshift({ts: onTs, on:true});
-    if(pendingEvent) powerEvents.unshift(pendingEvent);
+    // user gave resume explicitly — snap resume to nearest transition (if appropriate) or use exact provided time
+    const onTsRaw = new Date(resumeVal);
+    // Try to snap to exact transition time of inferred routine or both routines
+    const inf = infer();
+    let snapped = null;
+    if(inf.r){
+      const last = getLastTransitionAtOrBefore(inf.r, onTsRaw, true, 3);
+      if(last) snapped = last.ts;
+    }
+    if(!snapped){
+      // try both routines
+      let cand = null;
+      ['A','B'].forEach(r=>{
+        const l = getLastTransitionAtOrBefore(r, onTsRaw, true, 3);
+        if(l && (!cand || new Date(l.ts) > new Date(cand.ts))) cand = l;
+      });
+      if(cand) snapped = cand.ts;
+    }
+    // if no snapped found, use raw but remove seconds
+    const useTs = snapped || (new Date(onTsRaw).setSeconds(0,0) && new Date(onTsRaw).toISOString());
+    powerEvents.unshift({ts: useTs, on:true});
+    if(pendingEvent){
+      if(pendingEvent.observedAt) powerEvents.push({ts: pendingEvent.observedAt, on: pendingEvent.on});
+      else powerEvents.unshift({ts: new Date().toISOString(), on: pendingEvent.on});
+    }
   } else {
-    // NO resume provided: auto-simulate both A and B forward from cutoff to now and pick best
+    // Auto-simulate both A and B forward using exact transitions
     const now = new Date();
-    const simA = simulateTransitions('A', offTs, now);
-    const simB = simulateTransitions('B', offTs, now);
-    const scoreA = scoreSimulation(simA, pendingEvent);
-    const scoreB = scoreSimulation(simB, pendingEvent);
-    // choose best (tie-breaker prefer A)
-    const chosen = (scoreB > scoreA) ? {sim:simB, name:'B'} : {sim:simA, name:'A'};
-    // append all simulation events (except the initial OFF we already inserted — avoid dup)
-    // we will merge then sort and unique by timestamp+state
-    const toInsert = chosen.sim.map(e=>({ts:e.ts, on:e.on}));
-    // ensure we don't insert duplicate OFF at exact cutoff twice (we already inserted offTs)
-    // merge:
-    powerEvents = powerEvents.concat(toInsert);
-    // also keep pending event
-    if(pendingEvent) powerEvents.push(pendingEvent);
+    const simA = buildExactSchedule('A', offTs, now); // ascending
+    const simB = buildExactSchedule('B', offTs, now);
+    const scA = scoreSimulation(simA, pendingEvent);
+    const scB = scoreSimulation(simB, pendingEvent);
+
+    const MIN_CONF = 0.50;
+    const MIN_MARGIN = 0.07;
+    const chosenObj = (scB.score > scA.score) ? {sim:simB, name:'B', scoreObj:scB} : {sim:simA, name:'A', scoreObj:scA};
+    const otherObj = (chosenObj.name === 'A') ? scB : scA;
+
+    if(chosenObj.scoreObj.score >= MIN_CONF && (chosenObj.scoreObj.score - otherObj.score) >= MIN_MARGIN){
+      // chosenObj.sim is ascending list of exact transitions
+      const simEvents = chosenObj.sim.map(e=>({ts:e.ts, on:e.on}));
+      // backfill pending observed ON -> find last sim ON <= observedAt (exact)
+      if(pendingEvent && pendingEvent.observedAt){
+        const observed = new Date(pendingEvent.observedAt);
+        let foundSimOn = null;
+        for(let i = simEvents.length-1; i>=0; i--){
+          const se = simEvents[i];
+          if(se.on && new Date(se.ts) <= observed){
+            foundSimOn = se;
+            break;
+          }
+        }
+        if(!foundSimOn){
+          // no simulated ON before observed: add ON at observed snapped to minute (rare)
+          simEvents.push({ts:new Date(pendingEvent.observedAt).toISOString(), on:true});
+        } // else nothing to add - the sim ON already covers resumed state
+      } else if(pendingEvent){
+        simEvents.push({ts: new Date().toISOString(), on: pendingEvent.on});
+      }
+      // merge into history
+      powerEvents = powerEvents.concat(simEvents);
+    } else {
+      // ambiguous -> do not commit full simulation. Only insert observed marker (snapped)
+      if(pendingEvent){
+        if(pendingEvent.observedAt){
+          // snap observed marker to nearest transition (either routine) that is <= observed and matches pending state
+          let snapped = null;
+          ['A','B'].forEach(r=>{
+            const found = getLastTransitionAtOrBefore(r, new Date(pendingEvent.observedAt), pendingEvent.on, 3);
+            if(found && (!snapped || new Date(found.ts) > new Date(snapped))) snapped = found.ts;
+          });
+          if(snapped) powerEvents.push({ts: snapped, on: pendingEvent.on});
+          else powerEvents.push({ts: pendingEvent.observedAt, on: pendingEvent.on});
+        } else {
+          powerEvents.unshift({ts: new Date().toISOString(), on: pendingEvent.on});
+        }
+      }
+      // wait for more inputs
+    }
   }
 
-  // sort newest-first and deduplicate consecutive duplicates
+  // sort newest-first and dedupe exact duplicates
   powerEvents.sort((a,b)=> new Date(b.ts) - new Date(a.ts));
-  // remove duplicates (same ts and same state), and collapse near-duplicates within 1 minute preferring earliest event
   const cleaned = [];
   for(let i=0;i<powerEvents.length;i++){
     const cur = powerEvents[i];
     if(cleaned.length === 0){ cleaned.push(cur); continue; }
     const prev = cleaned[cleaned.length-1];
     if(prev.ts === cur.ts && prev.on === cur.on) continue;
+    // collapse if within same minute and same state, keep earlier (we have newest-first: keep prev)
     const prevDate = new Date(prev.ts), curDate = new Date(cur.ts);
-    if(Math.abs(prevDate - curDate) <= 60000 && prev.on === cur.on){
-      // keep earlier (we have newest-first, so keep prev and skip cur)
-      continue;
-    }
+    if(Math.abs(prevDate - curDate) <= 60000 && prev.on === cur.on) continue;
     cleaned.push(cur);
   }
   powerEvents = cleaned;
-  if(powerEvents.length>1000) powerEvents.length=1000;
+  if(powerEvents.length>1500) powerEvents.length=1500;
   pendingEvent = null;
   saveAll();
   modalBack.style.display = 'none';
@@ -345,7 +510,20 @@ saveCutoff.addEventListener('click', ()=>{
 
 /* skip handler */
 skipBtn.addEventListener('click', ()=>{
-  if(pendingEvent) powerEvents.unshift(pendingEvent);
+  if(pendingEvent){
+    // snap pending to nearest earlier transition if possible
+    if(pendingEvent.observedAt){
+      let snapped = null;
+      ['A','B'].forEach(r=>{
+        const found = getLastTransitionAtOrBefore(r, new Date(pendingEvent.observedAt), pendingEvent.on, 3);
+        if(found && (!snapped || new Date(found.ts) > new Date(snapped))) snapped = found.ts;
+      });
+      if(snapped) powerEvents.push({ts: snapped, on: pendingEvent.on});
+      else powerEvents.push({ts: pendingEvent.observedAt, on: pendingEvent.on});
+    } else {
+      powerEvents.unshift({ts: new Date().toISOString(), on: pendingEvent.on});
+    }
+  }
   pendingEvent = null;
   powerEvents.sort((a,b)=> new Date(b.ts) - new Date(a.ts));
   saveAll();
@@ -372,7 +550,7 @@ function toggleSleep(){
 powerToggle.addEventListener('change', ()=>{ recordPower(powerToggle.checked); });
 sleepToggle.addEventListener('change', ()=>{ toggleSleep(); });
 
-/* Inference (same as before) */
+/* Inference (unchanged, uses recorded events snapped to exact times) */
 function infer(){
   if(powerEvents.length === 0) return {r:null,c:0};
   const N = Math.min(40, powerEvents.length);
@@ -392,20 +570,33 @@ function infer(){
   if(confC>bestVal){best='C';bestVal=confC;}
   return {r: bestVal>=55?best:null, c:bestVal};
 }
+
+/* next predicted toggle based on exact schedule */
 function nextToggleFor(r){
   const start=new Date();
   if(!r) r='A';
-  const nowMin = start.getTime();
-  const limit = new Date(nowMin + 36*3600000); // 36h
-  let lastState = expectedAt(r,start);
-  for(let t = new Date(nowMin + 5*60000); t <= limit; t = new Date(t.getTime()+5*60000)){
-    const s = expectedAt(r,t);
-    if(s !== lastState){
-      return {time:t, state:s ? 'ON' : 'OFF'};
-    }
+  // build next transition by scanning next 36h
+  const now = new Date();
+  const limit = new Date(now.getTime() + 36*3600000);
+  for(let d = new Date(now); d <= limit; d.setMinutes(d.getMinutes()+5)){
+    // we'll compute transitions by checking transitionsForDay for each day and picking the next > now
   }
-  return null;
+  // simpler: generate transitions for next 3 days and find first > now
+  const candidates = [];
+  for(let i=0;i<3;i++){
+    const day = new Date(); day.setDate(day.getDate()+i); day.setHours(0,0,0,0);
+    transitionsForDay(day).forEach(t => {
+      if(t > now){
+        const after = new Date(t.getTime() + 1000);
+        const on = expectedAt(r, after);
+        candidates.push({time:t, state:on});
+      }
+    });
+  }
+  candidates.sort((a,b)=>a.time - b.time);
+  return candidates.length ? {time:candidates[0].time, state: candidates[0].state ? 'ON' : 'OFF'} : null;
 }
+
 function sleepLast24(){
   const cutoff = new Date(Date.now() - 24*3600000);
   let total=0;
@@ -424,6 +615,34 @@ function sleepLast24(){
   }
   return total;
 }
+
+/* Debug / log */
+showLogBtn.addEventListener('click', ()=>{
+  const p = JSON.parse(localStorage.getItem(K.P) || '[]');
+  const s = JSON.parse(localStorage.getItem(K.S) || '[]');
+  const inf = infer();
+  const lines = [];
+  lines.push('Now: ' + new Date().toLocaleString());
+  lines.push('Inferred: ' + (inf.r||'Unknown') + '  (conf ' + inf.c + '%)');
+  lines.push('');
+  lines.push('Recent power events (newest first):');
+  p.slice(0,20).forEach(e => lines.push(` ${new Date(e.ts).toLocaleString()} — ${e.on?'ON':'OFF'}`));
+  const lastOff = p.slice().reverse().find(x => x.on === false);
+  if(lastOff){
+    lines.push('');
+    lines.push('Last OFF used for sim: ' + new Date(lastOff.ts).toLocaleString());
+    const simA = buildExactSchedule('A', lastOff.ts, new Date());
+    const simB = buildExactSchedule('B', lastOff.ts, new Date());
+    const scA = scoreSimulation(simA, pendingEvent);
+    const scB = scoreSimulation(simB, pendingEvent);
+    lines.push('Sim A -> events: ' + simA.map(e=>`${new Date(e.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}:${e.on?'ON':'OFF'}`).join(' | '));
+    lines.push(`Score A: ${scA.score.toFixed(3)} (matches ${scA.matches}/${scA.realCount}) pendingMatch:${scA.pendingMatch}`);
+    lines.push('Sim B -> events: ' + simB.map(e=>`${new Date(e.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}:${e.on?'ON':'OFF'}`).join(' | '));
+    lines.push(`Score B: ${scB.score.toFixed(3)} (matches ${scB.matches}/${scB.realCount}) pendingMatch:${scB.pendingMatch}`);
+  }
+  logOut.style.display = 'block';
+  logOut.textContent = lines.join('\n');
+});
 
 /* Init */
 render();
