@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Electricity Routine Tracker — YOUR Logic Applied (12h)</title>
+  <style>
+:root {
+  --bg-dark:#0b0c10;
+  --panel-dark:#0f1116;
+  --text-light:#e6e8ef;
+  --muted-light:#9aa0b2;
+  --border-dark:#22252d;
+  --accent:#7c5cff;
+  --accent-2:#22c55e;
+  --radius:16px;
+  --text-dark:#071133;
+  --muted-dark:#475569;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  font-family: Inter, system-ui, Segoe UI, Roboto, Helvetica, Arial;
+  background: radial-gradient(800px 400px at 10% 0%, rgba(124,92,255,.06), transparent), #07080b;
+  color: var(--text-light);
+
+  display: block;            
+  padding: env(safe-area-inset, 0); /* safe padding for mobile */
+  overflow-y: auto;          
+  overflow-x: hidden;        
+}
+
+body.light-theme {
+  background: linear-gradient(180deg,#fbfbff,#f2f6ff);
+  color: var(--text-dark);
+}
+
+.app {
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;            
+  background: var(--panel-dark);
+  border-radius: 16px;
+  padding: 18px;
+  border: 1px solid rgba(255,255,255,0.03);
+  box-sizing: border-box;    
+  overflow-x: hidden;        
+}
+
+body.light-theme .app {
+  background: #ffffff;
+  border-color: #e6eef9;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+#daynight { font-size: 30px; }
+
+.clock {
+  font-family: ui-monospace, Menlo, Monaco, monospace;
+  font-size: 48px;
+}
+
+.date {
+  color: var(--muted-light);
+}
+
+body.light-theme .date { color: var(--muted-dark); }
+
+.controls {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+  align-items: center;
+  flex-wrap: wrap;           
+}
+
+.muted { color: var(--muted-light); }
+body.light-theme .muted { color: var(--muted-dark); }
+
+.switch {
+  --h:44px;
+  --w:120px;
+  position: relative;
+  width: var(--w);
+  height: var(--h);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.04);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+.switch .thumb {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  width: calc(var(--h)-12px);
+  height: calc(var(--h)-12px);
+  border-radius: 999px;
+  background: #fff;
+  transition: transform .18s ease, background .18s ease;
+}
+
+.switch[data-state="off"]::after {
+  content: attr(data-off);
+  color: var(--text-light);
+  font-weight: 800;
+}
+
+.switch[data-state="on"] {
+  background: linear-gradient(90deg, var(--accent-2), #6ee7b7);
+  border-color: rgba(0,0,0,0.12);
+}
+
+.switch[data-state="on"]::after {
+  content: attr(data-on);
+  color: #052e16;
+  font-weight: 900;
+}
+
+.switch[data-state="on"] .thumb {
+  transform: translateX(calc(var(--w)-var(--h)));
+}
+
+body.light-theme .switch[data-state="off"]::after { color: var(--text-dark); }
+body.light-theme .switch { border-color: #e6eef9; }
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr; /* always stack by default */
+  gap: 16px;
+  margin-top: 18px;
+}
+
+@media(min-width: 900px){
+  .grid {
+    grid-template-columns: 1fr 1fr; /* two columns on wider screens */
+  }
+}
+
+.card {
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.03);
+  overflow-wrap: break-word;
+}
+
+body.light-theme .card {
+  background: linear-gradient(180deg,#fff,#fbfdff);
+  border-color: #e6eef9;
+}
+
+canvas {
+  width: 100%;
+  height: auto;      /* responsive height */
+  max-height: 260px; /* keep max height for desktop */
+  display: block;    /* remove inline default spacing */
+}
+
+footer {
+  margin-top: 12px;
+  color: var(--muted-light);
+  font-size: 13px;
+}
+
+body.light-theme footer { color: var(--muted-dark); }
+
+.auto-note {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 20px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-weight: 700;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s;
+}
+
+.auto-note.show { opacity: 1; }
+
+body.light-theme .auto-note {
+  background: rgba(255,255,255,0.95);
+  color: #071133;
+}
+
+.debug {
+  position: fixed;
+  left: 12px;
+  top: 12px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  max-width: 420px;
+  z-index: 999;
+  display: none;
+}
+
+.debug pre { white-space: pre-wrap; margin: 0; }
+
+  </style>
+</head>
+<body>
+  <div class="app" role="application" aria-label="Electricity & Sleep tracker">
+    <header>
+      <div id="daynight">☀️</div>
+      <div>
+        <div class="clock" id="clock">00:00:00 AM</div>
+        <div class="date muted" id="date">Mon • 01, 01, 2025</div>
+      </div>
+      <div style="margin-left:auto;text-align:right">
+        <div class="muted" id="light-indicator">Light: OFF</div>
+      </div>
+    </header>
+
+    <div class="controls">
+      <div class="switch-input">
+        <input id="light-toggle" type="checkbox" aria-label="Light toggle">
+        <div class="switch" id="light-switch" data-on="ON" data-off="OFF" data-state="off"><span class="thumb" aria-hidden="true"></span></div>
+      </div>
+
+      <div class="switch-input">
+        <input id="sleep-toggle" type="checkbox" aria-label="Sleep toggle">
+        <div class="switch" id="sleep-switch" data-on="ASLEEP" data-off="AWAKE" data-state="off"><span class="thumb" aria-hidden="true"></span></div>
+      </div>
+
+      <div class="muted" id="sleep-stats">Slept 0.0h in last 24h</div>
+    </div>
+
+    <section class="grid" aria-live="polite">
+      <div class="card">
+        <h3>Prediction</h3>
+        <div id="next-pred" class="muted">Next: —</div>
+        <div id="deviation-note" class="muted" style="margin-top:6px"></div>
+      </div>
+
+      <div class="card">
+        <h3>Sleep — last 7 days</h3>
+        <canvas id="sleep-graph" width="600" height="260" aria-label="Sleep graph"></canvas>
+        <div class="muted" id="graph-note" style="margin-top:8px">Shows total hours slept per day (7 days). Bars show hours with one decimal.</div>
+      </div>
+    </section>
+
+    <footer>
+      State persisted in localStorage. Routine selector hidden. YOUR logic applied for routine choice. Clock & prediction now show AM/PM.
+    </footer>
+  </div>
+
+  <div id="auto-note" class="auto-note" aria-hidden="true"></div>
+  <div id="debug" class="debug" aria-hidden="true"><pre id="debug-pre"></pre></div>
+
+  <script>
+    // Utilities
+    const $ = id => document.getElementById(id);
+    const pad2 = n => String(n).padStart(2,'0');
+    const LS = { sleepHistory: 'ert_sleepHistory', light: 'ert_lightOn', routine: 'ert_routine', sleepState: 'ert_sleepState', sleepCurrentStart: 'ert_sleepCurrentStart' };
+
+    // Routines (exactly as you defined)
+    function getSchedule(r){
+      if(r==='A') return [[0,300,true],[300,540,false],[540,780,true],[780,1020,false],[1020,1440,true]];
+      if(r==='B') return [[0,540,true],[540,780,false],[780,1020,true],[1020,1260,false],[1260,1440,true]];
+      return [[0,1440,true]]; // C
+    }
+
+    function minutesFromMidnight(d){ return d.getHours()*60 + d.getMinutes(); }
+
+    function computeRoutineExpectation(routine, referenceDate = new Date()){
+      const mins = minutesFromMidnight(referenceDate);
+      const schedule = getSchedule(routine);
+      for(const seg of schedule){ const [s,e,state] = seg; if(mins >= s && mins < e){ const next = new Date(referenceDate); next.setHours(Math.floor(e/60)); next.setMinutes(e%60); next.setSeconds(0); next.setMilliseconds(0); return { expected: state, nextChange: next, nextState: !state, segmentStart: s, segmentEnd: e }; }}
+      return { expected: true, nextChange: null, nextState: null, segmentStart:0, segmentEnd:1440 };
+    }
+
+    // YOUR LOGIC implementation
+    function minutesUntil(dt, now = new Date()){ return Math.max(0, Math.round((dt.getTime() - now.getTime()) / 60000)); }
+
+    function chooseRoutineFromLight(isOn){
+      const routines = ['A','B','C'];
+      const now = new Date();
+
+      // 1) candidates whose segment contains NOW with expected === isOn
+      let candidates = routines.filter(r => computeRoutineExpectation(r, now).expected === isOn);
+
+      // If exactly one match, pick it
+      if(candidates.length === 1) return candidates[0];
+
+      // If multiple match, prefer non-C (i.e., prefer routines that actually have a finite segment covering now)
+      if(candidates.length > 1){
+        const nonC = candidates.filter(x => x !== 'C');
+        if(nonC.length > 0) candidates = nonC;
+
+        // pick the one with the largest remaining minutes in current segment
+        let best = candidates[0];
+        let bestRemaining = -1;
+        for(const r of candidates){
+          const e = computeRoutineExpectation(r, now);
+          let remaining = 1440; // fallback
+          if(e && e.nextChange) remaining = minutesUntil(e.nextChange, now);
+          if(remaining > bestRemaining){ bestRemaining = remaining; best = r; }
+        }
+        return best;
+      }
+
+      // 2) none match now -> choose routine that WILL switch to isOn the soonest (nextChange where nextState == isOn)
+      let soonest = { r: null, mins: Infinity };
+      for(const r of routines){
+        const e = computeRoutineExpectation(r, now);
+        if(e && e.nextChange && e.nextState === isOn){
+          const mins = minutesUntil(e.nextChange, now);
+          if(mins < soonest.mins){ soonest = { r, mins }; }
+          else if(mins === soonest.mins){ // tie -> prefer A,B,C order
+            const order = ['A','B','C'];
+            if(order.indexOf(r) < order.indexOf(soonest.r)) soonest.r = r;
+          }
+        }
+      }
+      if(soonest.r) return soonest.r;
+
+      // 3) fallback
+      return isOn ? 'C' : 'A';
+    }
+
+    // --- Sleep storage + migration ---
+    function migrateSleepHistory(){
+      const existing = localStorage.getItem(LS.sleepHistory);
+      if(existing) return;
+      const legacyKeys = ['ert_sleephistory','ert_sleep_history','sleep_history','sleepHistory','electricity_state','ert_sleepHistory'];
+      let combined = [];
+      for(const k of legacyKeys){
+        const raw = localStorage.getItem(k);
+        if(!raw) continue;
+        try{
+          const parsed = JSON.parse(raw);
+          if(Array.isArray(parsed) && parsed.length && typeof parsed[0] === 'object' && parsed[0].minutes!==undefined){ combined = combined.concat(parsed); continue; }
+          if(Array.isArray(parsed) && parsed.every(x => typeof x === 'number')){ combined = combined.concat(parsed.map(ts => ({start: ts, minutes: 0}))); continue; }
+          if(Array.isArray(parsed.events)){ const times = parsed.events.filter(e=>e.action && e.time && /sleep/i.test(e.action)).map(e=>({start: e.time, minutes: 0})); combined = combined.concat(times); continue; }
+          if(parsed.action && /sleep/i.test(parsed.action) && parsed.time) combined.push({start: parsed.time, minutes:0});
+        }catch(e){
+          const arr = raw.split(/\s+/).map(s => Number(s)).filter(Boolean);
+          if(arr.length) combined = combined.concat(arr.map(ts=>({start:ts, minutes:0})));
+        }
+      }
+      if(combined.length){ const map=new Map(); combined.forEach(it=>map.set(Number(it.start),{start:Number(it.start),minutes:Number(it.minutes)||0})); const out=Array.from(map.values()).sort((a,b)=>a.start-b.start); localStorage.setItem(LS.sleepHistory, JSON.stringify(out)); } else localStorage.setItem(LS.sleepHistory, JSON.stringify([]));
+    }
+
+    function loadSleepHistory(){ try{ return JSON.parse(localStorage.getItem(LS.sleepHistory)) || []; }catch(e){ return []; } }
+    function saveSleepHistory(arr){ localStorage.setItem(LS.sleepHistory, JSON.stringify(arr)); }
+    function pushSleepRecord(startMs, minutes){ const h = loadSleepHistory(); h.push({start: Number(startMs), minutes: Number(minutes)}); saveSleepHistory(h); }
+
+    // Graph draw
+    function drawSleepGraph(){
+      const canvas = $('sleep-graph'); const ctx = canvas.getContext('2d'); const ratio = window.devicePixelRatio || 1; canvas.width = canvas.clientWidth * ratio; canvas.height = 260 * ratio; ctx.setTransform(ratio,0,0,ratio,0,0); ctx.clearRect(0,0,canvas.width,canvas.height);
+      const now = new Date(); now.setHours(0,0,0,0);
+      const days=[]; for(let i=6;i>=0;i--){ const d=new Date(now); d.setDate(now.getDate()-i); days.push(d); }
+      const hist = loadSleepHistory();
+      const minutesPerDay = days.map(d=>{ const start=d.getTime(); const end=start+24*3600*1000; return hist.filter(rec=>rec.start>=start && rec.start<end).reduce((s,rec)=>s+(Number(rec.minutes)||0),0); });
+      const maxMinutes = Math.max(60, ...minutesPerDay);
+      const padding=36; const w=canvas.clientWidth; const h=260; const chartW=w-padding*2; const chartH=h-padding*2-20; const barW=Math.floor((chartW/minutesPerDay.length)*0.7);
+      ctx.fillStyle='rgba(255,255,255,0.02)'; ctx.fillRect(padding,padding,chartW,chartH);
+      minutesPerDay.forEach((mins,i)=>{ const hours=mins/60; const x=padding + i*(chartW/minutesPerDay.length) + ((chartW/minutesPerDay.length)-barW)/2; const barH=Math.round((mins/maxMinutes)*(chartH-10)); const y=padding + (chartH - barH); const grad=ctx.createLinearGradient(0,y,0,y+barH); grad.addColorStop(0,'rgba(124,92,255,0.95)'); grad.addColorStop(1,'rgba(34,197,94,0.85)'); ctx.fillStyle=grad; ctx.fillRect(x,y,barW,barH); ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.font='14px system-ui'; ctx.textAlign='center'; ctx.fillText((Math.round(hours*10)/10).toFixed(1)+'h', x+barW/2, y-8); const label=days[i].toLocaleDateString(undefined,{weekday:'short'}); ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.font='13px system-ui'; ctx.fillText(label, x+barW/2, padding+chartH+16); });
+    }
+
+    // Format helper 12-hour
+    function formatTime12(d){ if(!d) return '—'; const hh = d.getHours(); const mm = d.getMinutes(); const ss = d.getSeconds != null ? d.getSeconds() : 0; const ampm = hh >= 12 ? 'PM' : 'AM'; const h12 = hh % 12 === 0 ? 12 : hh % 12; return `${h12}:${pad2(mm)}${ss!==undefined?':'+pad2(ss):''} ${ampm}`; }
+    function formatTime12Short(d){ if(!d) return '—'; const hh = d.getHours(); const mm = d.getMinutes(); const ampm = hh >= 12 ? 'PM' : 'AM'; const h12 = hh % 12 === 0 ? 12 : hh % 12; return `${h12}:${pad2(mm)} ${ampm}`; }
+
+    // Prediction concise (AM/PM)
+    function renderPrediction(){ const routine = localStorage.getItem(LS.routine) || 'A'; const exp = computeRoutineExpectation(routine, new Date()); if(!exp.nextChange){ $('next-pred').textContent = 'Lights: —'; $('deviation-note').textContent = ''; return; } const next = exp.nextChange; const stateStr = exp.nextState ? 'ON' : 'OFF'; $('next-pred').textContent = `Lights will be ${stateStr} at ${formatTime12Short(next)}`; const userLight = JSON.parse(localStorage.getItem(LS.light) || 'false'); if(userLight !== exp.expected){ $('deviation-note').textContent = `Note: You're ${userLight?'ON':'OFF'} (differs from routine).`; } else { $('deviation-note').textContent = ''; } }
+
+    // UI handlers
+    function setLightUI(isOn, saveIt=true){ $('light-toggle').checked=isOn; $('light-switch').setAttribute('data-state', isOn ? 'on' : 'off'); $('light-indicator').textContent = `Light: ${isOn ? 'ON' : 'OFF'}`; if(isOn) document.body.classList.add('light-theme'); else document.body.classList.remove('light-theme'); if(saveIt) localStorage.setItem(LS.light, JSON.stringify(isOn)); }
+    function startSleep(){ localStorage.setItem(LS.sleepCurrentStart, String(Date.now())); localStorage.setItem(LS.sleepState, JSON.stringify(true)); }
+    function endSleep(){ const start=Number(localStorage.getItem(LS.sleepCurrentStart)); if(start && !isNaN(start)){ const mins=Math.round((Date.now()-start)/60000); pushSleepRecord(start, mins); localStorage.removeItem(LS.sleepCurrentStart); } localStorage.setItem(LS.sleepState, JSON.stringify(false)); }
+    function syncSwitchVisual(inputEl, switchEl){ const isOn=Boolean(inputEl.checked); switchEl.setAttribute('data-state', isOn ? 'on' : 'off'); if(switchEl.id==='light-switch'){ $('light-indicator').textContent = `Light: ${isOn ? 'ON' : 'OFF'}`; if(isOn) document.body.classList.add('light-theme'); else document.body.classList.remove('light-theme'); localStorage.setItem(LS.light, JSON.stringify(isOn)); const chosen = chooseRoutineFromLight(isOn); localStorage.setItem(LS.routine, chosen); localStorage.setItem('ert_routine', chosen); showAutoNote(`Auto-selected Routine ${chosen}`); renderPrediction(); } else if(switchEl.id==='sleep-switch'){ if(isOn){ startSleep(); } else { endSleep(); } updateSleepStats(); drawSleepGraph(); } }
+
+    function attachHandlers(){ const lightInput=$('light-toggle'); const lightSwitch=$('light-switch'); lightInput.addEventListener('change', ()=>{ syncSwitchVisual(lightInput, lightSwitch); }); lightSwitch.addEventListener('click', ()=>{ const inp=$('light-toggle'); inp.checked = !inp.checked; inp.dispatchEvent(new Event('change',{bubbles:true})); }); const sleepInput=$('sleep-toggle'); const sleepSwitch=$('sleep-switch'); sleepInput.addEventListener('change', ()=>{ syncSwitchVisual(sleepInput, sleepSwitch); }); sleepSwitch.addEventListener('click', ()=>{ const inp=$('sleep-toggle'); inp.checked = !inp.checked; inp.dispatchEvent(new Event('change',{bubbles:true})); }); }
+
+    function updateSleepStats(){ const hist=loadSleepHistory(); const cutoff=Date.now()-24*3600*1000; const recent=hist.filter(rec=> (Number(rec.start) >= cutoff)); const totalMins=recent.reduce((s,r)=>s + (Number(r.minutes)||0), 0); const hours = Math.round((totalMins/60)*10)/10; $('sleep-stats').textContent = `Slept ${hours.toFixed(1)}h in last 24h`; }
+
+    // helper show auto note
+    function showAutoNote(text){ const el=$('auto-note'); el.textContent = text; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),4000); }
+
+    // Debug helper (toggle in console: window.DEBUG_SHOW=true)
+    function debugShow(text){ const dbg = $('debug'); const pre = $('debug-pre'); if(window.DEBUG_SHOW){ dbg.style.display = 'block'; pre.textContent = text; } }
+
+    // Init
+    (function init(){ migrateSleepHistory(); const lightOn = JSON.parse(localStorage.getItem(LS.light) || 'false'); setLightUI(lightOn); const sleepOn = JSON.parse(localStorage.getItem(LS.sleepState) || 'false'); if(sleepOn){ $('sleep-toggle').checked=true; $('sleep-switch').setAttribute('data-state','on'); } else { $('sleep-toggle').checked=false; $('sleep-switch').setAttribute('data-state','off'); } updateSleepStats(); drawSleepGraph(); renderPrediction(); function renderClock(){ const d=new Date(); const hh = d.getHours(); const mm = d.getMinutes(); const ss = d.getSeconds(); const ampm = hh>=12 ? 'PM' : 'AM'; const h12 = hh%12 === 0 ? 12 : hh%12; $('clock').textContent = `${h12}:${pad2(mm)}:${pad2(ss)} ${ampm}`; $('date').textContent = `${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]} • ${pad2(d.getDate())}, ${pad2(d.getMonth()+1)}, ${d.getFullYear()}`; $('daynight').textContent = (d.getHours()>=6 && d.getHours()<18)?'☀️':'🌙'; }
+      setInterval(()=>{ renderClock(); renderPrediction(); updateSleepStats(); },1000); renderClock(); attachHandlers(); syncSwitchVisual($('light-toggle'), $('light-switch')); syncSwitchVisual($('sleep-toggle'), $('sleep-switch')); window.addEventListener('resize', drawSleepGraph); window.chooseRoutineFromLight = chooseRoutineFromLight; window.computeRoutineExpectation = computeRoutineExpectation; window.debugShow = debugShow; })();
+  </script>
+</body>
+</html>
